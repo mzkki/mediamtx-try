@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Broadcaster - WebRTC + MediaMTX</title>
+    <style>
+      body {
+        background: #111;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        gap: 1rem;
+      }
+      video {
+        width: 80%;
+        border-radius: 10px;
+      }
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        background: #2a9d8f;
+        color: white;
+      }
+      button:hover {
+        background: #21867a;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>🎥 Broadcaster</h2>
+    <video id="localVideo" autoplay muted playsinline></video>
+    <button id="startBtn">Start Broadcast</button>
+    <span id="log"></span>
+
+    <script>
+      const video = document.getElementById("localVideo");
+      const startBtn = document.getElementById("startBtn");
+      const logEl = document.getElementById("log");
+
+      function appendLog(msg, isError = false) {
+        const prefix = isError ? "❌ " : "ℹ️ ";
+        const time = new Date().toLocaleTimeString();
+        logEl.innerText += `[${time}] ${prefix}${msg}\n`;
+        if (isError) console.error(msg);
+        else console.log(msg);
+      }
+
+      async function startBroadcast() {
+        appendLog("Starting broadcast...");
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          appendLog("Acquired local media");
+          video.srcObject = stream;
+
+          // include a STUN server so the browser can gather server-reflexive (srflx)
+          // candidates; without this only host candidates are gathered and will
+          // usually fail across NAT.
+          const pc = new RTCPeerConnection({
+            iceServers: [
+              { urls: "stun:stun.l.google.com:19302" },
+              // Example TURN server (uncomment & replace with real credentials)
+              // { urls: "turn:turn.example.com:3478", username: "turnuser", credential: "turnpass" }
+            ],
+          });
+
+          pc.onicecandidate = (e) => {
+            if (e.candidate) {
+              appendLog(`Local ICE candidate: ${e.candidate.candidate}`);
+            } else {
+              appendLog("Local ICE gathering finished");
+            }
+          };
+
+          pc.onicegatheringstatechange = () => {
+            appendLog(`ICE gathering state: ${pc.iceGatheringState}`);
+          };
+
+          pc.onconnectionstatechange = () => {
+            appendLog(`PeerConnection state: ${pc.connectionState}`);
+          };
+
+          pc.oniceconnectionstatechange = () => {
+            appendLog(`ICE connection state: ${pc.iceConnectionState}`);
+          };
+
+          stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          appendLog("Created local SDP offer");
+
+          // Send offer ke MediaMTX (WHIP endpoint)
+          // ask user for the WHIP endpoint so you can use a public IP / domain
+          const defaultWhip =
+            "https://fb7c82564118.ngrok-free.app/mystream/whip"; // change default if you prefer
+          let enteredWhip =
+            prompt(
+              "Enter MediaMTX WHIP URL (example: https://1.2.3.4:8889/mystream/whip)",
+              defaultWhip
+            ) || defaultWhip;
+
+          if (
+            location.protocol === "https:" &&
+            enteredWhip.startsWith("http://")
+          ) {
+            appendLog(
+              "⚠️ Mixed content: page is HTTPS but WHIP URL is HTTP. Trying HTTPS variant; if this fails, serve WHIP over TLS (use ngrok/Caddy/etc).",
+              true
+            );
+            enteredWhip = enteredWhip.replace(/^http:/i, "https:");
+          }
+
+          appendLog(`Sending offer to ${enteredWhip}`);
+          const res = await fetch(enteredWhip, {
+            method: "POST",
+            headers: { "Content-Type": "application/sdp" },
+            body: offer.sdp,
+          });
+
+          appendLog(`Received HTTP ${res.status} ${res.statusText}`);
+          if (!res.ok) {
+            const errText = await res.text();
+            appendLog(`WHIP error response: ${errText}`, true);
+            throw new Error(`WHIP server returned ${res.status}`);
+          }
+
+          const answerSdp = await res.text();
+          appendLog(`Received answer SDP (length ${answerSdp.length})`);
+
+          // Log full answer SDP for debugging (copy/paste it if needed)
+          appendLog("----- BEGIN ANSWER SDP -----");
+          // show smaller chunks so very long SDPs don't freeze some UIs
+          const sdpLines = answerSdp.split("\n");
+          for (let i = 0; i < sdpLines.length; i++) {
+            const line = sdpLines[i];
+            appendLog(line);
+          }
+          appendLog("----- END ANSWER SDP -----");
+
+          // Extract and log candidate lines from the answer (if any)
+          const candidateLines = sdpLines.filter((l) =>
+            l.trim().startsWith("a=candidate:")
+          );
+          if (candidateLines.length > 0) {
+            appendLog(
+              `Answer contains ${candidateLines.length} candidate line(s):`
+            );
+            candidateLines.forEach((c) => appendLog(c));
+          } else {
+            appendLog("Answer contains no a=candidate lines");
+          }
+
+          await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+          appendLog("✅ Broadcast started on mystream");
+        } catch (err) {
+          appendLog(String(err), true);
+        }
+      }
+
+      startBtn.onclick = startBroadcast;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Viewer - WebRTC + MediaMTX</title>
+    <style>
+      body {
+        background: #111;
+        color: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        gap: 1rem;
+        margin: 0;
+        font-family: sans-serif;
+      }
+      video {
+        width: 80%;
+        border-radius: 10px;
+        background: black;
+      }
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        background: #e76f51;
+        color: white;
+      }
+      button:hover {
+        background: #d55d42;
+      }
+      /* ensure newlines appear in the log element */
+      #log {
+        white-space: pre-wrap;
+        max-width: 80%;
+        text-align: left;
+        font-family: monospace;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>👀 Viewer</h2>
+    <video id="myvideo" controls autoplay playsinline muted></video>
+    <button id="playBtn">Play Stream</button>
+    <span id="rate"></span>
+    <span id="log"></span>
+
+    <!-- Load MediaMTX WebRTC Reader -->
+    <script defer src="./reader.js"></script>
+
+    <script>
+      let reader = null;
+      const btn = document.getElementById("playBtn");
+      const logEl = document.getElementById("log");
+      const rateEl = document.getElementById("rate");
+
+      function appendLog(msg, isError = false) {
+        const prefix = isError ? "❌ " : "ℹ️ ";
+        // append with a newline
+        logEl.innerText =
+          (logEl.innerText ? logEl.innerText + "\n" : "") + prefix + msg;
+        // keep console output too
+        if (isError) console.error(msg);
+        else console.log(msg);
+      }
+
+      function showRate(msg) {
+        rateEl.innerText = msg;
+      }
+
+      // keep past stats per report id to compute per-second bitrate
+      const lastStats = new Map();
+
+      setInterval(async () => {
+        const pc = reader && reader.pc ? reader.pc : null;
+        if (!pc) return;
+
+        try {
+          const stats = await pc.getStats();
+          const now = Date.now();
+
+          stats.forEach((report) => {
+            if (report.type === "inbound-rtp" && report.kind === "video") {
+              const id = report.id || report.ssrc || "video";
+              const bytes = report.bytesReceived ?? report.bytes_received ?? 0;
+
+              const prev = lastStats.get(id);
+              if (prev) {
+                const deltaBytes = Math.max(0, bytes - prev.bytes);
+                const deltaSec = Math.max(0.001, (now - prev.ts) / 1000); // avoid div by zero
+                const bitsPerSec = (deltaBytes * 8) / deltaSec;
+                showRate(
+                  `📶 Video bitrate: ${(bitsPerSec / 1000000).toFixed(2)} Mbps`
+                );
+              } else {
+                // first sample — show unknown or 0 until we have a delta
+                showRate("📶 Video bitrate: calculating...");
+              }
+
+              lastStats.set(id, { bytes, ts: now });
+            }
+          });
+        } catch (err) {
+          // ignore/getStats errors when connection isn't ready yet
+        }
+      }, 1000);
+
+      btn.addEventListener("click", () => {
+        if (reader !== null) {
+          appendLog("Closing existing reader");
+          reader.close();
+          reader = null;
+        }
+
+        appendLog("Creating reader and connecting...");
+        // ask user for the WHEP endpoint so you can use a public IP / domain
+        const defaultWhep = "http://localhost:8889/mystream/whep"; // change if you prefer a different default
+        let enteredWhep =
+          prompt(
+            "Enter MediaMTX WHEP URL (example: https://1.2.3.4:8889/mystream/whep)",
+            defaultWhep
+          ) || defaultWhep;
+
+        // Mixed content protection: if the page is served over HTTPS, we must
+        // use an HTTPS WHEP endpoint. If the user entered http://, try the
+        // https:// variant automatically and warn them. If the server doesn't
+        // support TLS you'll need to run a TLS proxy (ngrok, Caddy, nginx).
+        if (
+          location.protocol === "https:" &&
+          enteredWhep.startsWith("http://")
+        ) {
+          appendLog(
+            "⚠️ Mixed content: page is HTTPS but WHEP URL is HTTP. Trying HTTPS variant; if this fails, serve WHEP over TLS (use ngrok/Caddy/etc).",
+            true
+          );
+          enteredWhep = enteredWhep.replace(/^http:/i, "https:");
+        }
+
+        reader = new MediaMTXWebRTCReader({
+          url: enteredWhep, // ✅ now you can paste your public IP or domain here
+          user: "", // optional basic auth username
+          pass: "", // optional basic auth password
+          token: "", // optional bearer token
+          onError: (err) => {
+            appendLog(String(err), true);
+          },
+          onTrack: (evt) => {
+            appendLog("Terkoneksi ke stream!");
+            document.getElementById("myvideo").srcObject = evt.streams[0];
+          },
+        });
+      });
+
+      window.addEventListener("beforeunload", () => {
+        if (reader !== null) {
+          appendLog("Window unloading — closing reader");
+          reader.close();
+        }
+      });
+    </script>
+  </body>
+</html>

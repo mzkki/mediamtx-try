@@ -1,0 +1,9 @@
+logLevel: info
+
+rtsp: yes
+webrtc: yes
+hls: yes
+
+paths:
+  all:
+    record: no
