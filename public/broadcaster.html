@@ -101,13 +101,13 @@
 
           // Send offer ke MediaMTX (WHIP endpoint)
           // ask user for the WHIP endpoint so you can use a public IP / domain
-          const defaultWhip =
-            "https://fb7c82564118.ngrok-free.app/mystream/whip"; // change default if you prefer
-          let enteredWhip =
-            prompt(
-              "Enter MediaMTX WHIP URL (example: https://1.2.3.4:8889/mystream/whip)",
-              defaultWhip
-            ) || defaultWhip;
+          const defaultWhip = "https://webrtc.mzkki.my.id/mystream/whip"; // change default if you prefer
+          let enteredWhip = defaultWhip;
+          // let enteredWhip =
+          //   prompt(
+          //     "Enter MediaMTX WHIP URL (example: https://1.2.3.4:8889/mystream/whip)",
+          //     defaultWhip
+          //   ) || defaultWhip;
 
           if (
             location.protocol === "https:" &&

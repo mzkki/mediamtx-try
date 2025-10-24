@@ -119,12 +119,13 @@
 
         appendLog("Creating reader and connecting...");
         // ask user for the WHEP endpoint so you can use a public IP / domain
-        const defaultWhep = "http://localhost:8889/mystream/whep"; // change if you prefer a different default
-        let enteredWhep =
-          prompt(
-            "Enter MediaMTX WHEP URL (example: https://1.2.3.4:8889/mystream/whep)",
-            defaultWhep
-          ) || defaultWhep;
+        const defaultWhep = "https://webrtc.mzkki.my.id/mystream/whep"; // change if you prefer a different default
+        //  prompt(
+        //      let enteredWhep =
+        //      "Enter MediaMTX WHEP URL (example: https://1.2.3.4:8889/mystream/whep)",
+        //      defaultWhep
+        //    ) || defaultWhep;
+        let enteredWhep = defaultWhep;
 
         // Mixed content protection: if the page is served over HTTPS, we must
         // use an HTTPS WHEP endpoint. If the user entered http://, try the
