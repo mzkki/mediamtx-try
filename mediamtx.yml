@@ -7,3 +7,4 @@ hls: yes
 paths:
   all:
     record: no
+    source: publisher
