@@ -22,6 +22,21 @@
         border-radius: 8px;
         background: black;
       }
+      .video-wrap {
+        position: relative;
+        display: inline-block;
+      }
+      .video-overlay {
+        position: absolute;
+        left: 35px;
+        bottom: 8px;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-family: monospace;
+        font-size: 0.9rem;
+        color: #fff;
+      }
       .controls {
         display: flex;
         gap: 0.5rem;
@@ -70,7 +85,10 @@
     >
       <div style="text-align: center">
         <h4>Video Kamu</h4>
-        <video id="localVid" autoplay muted playsinline></video>
+        <div class="video-wrap">
+          <video id="localVid" autoplay muted playsinline></video>
+          <div class="video-overlay" id="localOverlay">haris — --:--:--</div>
+        </div>
         <div style="margin-top: 6px">
           <button id="startPub">Mulai Video</button>
           <button id="stopPub" disabled>Matikan</button>
@@ -79,7 +97,10 @@
 
       <div style="text-align: center">
         <h4>Video Teman Kamu</h4>
-        <video id="remoteVid" autoplay playsinline controls></video>
+        <div class="video-wrap">
+          <video id="remoteVid" autoplay playsinline controls></video>
+          <div class="video-overlay" id="remoteOverlay">wira — --:--:--</div>
+        </div>
         <div style="margin-top: 6px">
           <button id="startSub">Lihat Video</button>
           <button id="stopSub" disabled>Matikan</button>
@@ -100,6 +121,45 @@
       const stopSub = document.getElementById("stopSub");
       const pubStreamNameEl = document.getElementById("vcPubStreamName");
       const subStreamNameEl = document.getElementById("vcSubStreamName");
+      const localOverlayEl = document.getElementById("localOverlay");
+      const remoteOverlayEl = document.getElementById("remoteOverlay");
+
+      // persist names so overlay shows the last-used name
+      try {
+        const p = localStorage.getItem("vcPubStreamName");
+        const s = localStorage.getItem("vcSubStreamName");
+        if (p) pubStreamNameEl.value = p;
+        if (s) subStreamNameEl.value = s;
+      } catch (e) {}
+      pubStreamNameEl.addEventListener("change", () => {
+        try {
+          localStorage.setItem("vcPubStreamName", pubStreamNameEl.value || "");
+        } catch (e) {}
+      });
+      subStreamNameEl.addEventListener("change", () => {
+        try {
+          localStorage.setItem("vcSubStreamName", subStreamNameEl.value || "");
+        } catch (e) {}
+      });
+
+      function formatTime(date) {
+        const hh = String(date.getHours()).padStart(2, "0");
+        const mm = String(date.getMinutes()).padStart(2, "0");
+        const ss = String(date.getSeconds()).padStart(2, "0");
+        return `${hh}:${mm}:${ss}`;
+      }
+
+      function updateOverlays() {
+        try {
+          const now = new Date();
+          const t = formatTime(now);
+          const pubName = (pubStreamNameEl.value || "unknown").trim();
+          const subName = (subStreamNameEl.value || "unknown").trim();
+          if (localOverlayEl) localOverlayEl.innerText = `${pubName} — ${t}`;
+          if (remoteOverlayEl) remoteOverlayEl.innerText = `${subName} — ${t}`;
+        } catch (e) {}
+      }
+      setInterval(updateOverlays, 1000);
 
       function appendLog(msg, isErr = false) {
         const t = new Date().toLocaleTimeString();
