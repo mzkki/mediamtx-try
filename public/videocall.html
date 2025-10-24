@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Video Call - Publisher & Viewer</title>
+    <style>
+      body {
+        background: #111;
+        color: #fff;
+        font-family: sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        height: 100vh;
+        margin: 0;
+        padding: 1rem;
+      }
+      video {
+        width: 560px;
+        max-width: 90%;
+        border-radius: 8px;
+        background: black;
+      }
+      .controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+      }
+      input {
+        padding: 6px 8px;
+        border-radius: 6px;
+        border: 1px solid #444;
+        background: #222;
+        color: #fff;
+      }
+      button {
+        padding: 8px 12px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+      }
+      #log {
+        white-space: pre-wrap;
+        max-width: 90%;
+        text-align: left;
+        font-family: monospace;
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>📞 Video Call by KingH4r4mb3</h2>
+
+    <div class="controls">
+      <label>Nama Kamu: <input id="vcPubStreamName" value="haris" /></label>
+      <label
+        >Nama Teman Kamu: <input id="vcSubStreamName" value="wira"
+      /></label>
+    </div>
+
+    <div
+      style="
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+        justify-content: center;
+      "
+    >
+      <div style="text-align: center">
+        <h4>Video Kamu</h4>
+        <video id="localVid" autoplay muted playsinline></video>
+        <div style="margin-top: 6px">
+          <button id="startPub">Mulai Video</button>
+          <button id="stopPub" disabled>Matikan</button>
+        </div>
+      </div>
+
+      <div style="text-align: center">
+        <h4>Video Teman Kamu</h4>
+        <video id="remoteVid" autoplay playsinline controls></video>
+        <div style="margin-top: 6px">
+          <button id="startSub">Lihat Video</button>
+          <button id="stopSub" disabled>Matikan</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="log"></div>
+
+    <script defer src="./reader.js"></script>
+    <script>
+      const logEl = document.getElementById("log");
+      const localVid = document.getElementById("localVid");
+      const remoteVid = document.getElementById("remoteVid");
+      const startPub = document.getElementById("startPub");
+      const stopPub = document.getElementById("stopPub");
+      const startSub = document.getElementById("startSub");
+      const stopSub = document.getElementById("stopSub");
+      const pubStreamNameEl = document.getElementById("vcPubStreamName");
+      const subStreamNameEl = document.getElementById("vcSubStreamName");
+
+      function appendLog(msg, isErr = false) {
+        const t = new Date().toLocaleTimeString();
+        logEl.innerText =
+          `[${t}] ${isErr ? "❌" : "ℹ️"} ${msg}\n` + logEl.innerText;
+        if (isErr) console.error(msg);
+        else console.log(msg);
+      }
+
+      let pubPc = null;
+      let pubStream = null;
+      let reader = null;
+
+      function buildUrl(base, name, suffix) {
+        const b = (base || "").replace(/\/$/, "");
+        const s = encodeURIComponent((name || "").trim());
+        return `${b}/${s}/${suffix}`;
+      }
+
+      startPub.addEventListener("click", async () => {
+        startPub.disabled = true;
+        try {
+          pubStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true,
+          });
+          localVid.srcObject = pubStream;
+          pubPc = new RTCPeerConnection({
+            iceServers: [
+              {
+                urls: "stun:stun.l.google.com:19302",
+              } /*, { urls:'turn:turn.example.com:3478', username:'u', credential:'p' }*/,
+            ],
+          });
+
+          pubPc.oniceconnectionstatechange = () =>
+            appendLog(`Publish ICE state: ${pubPc.iceConnectionState}`);
+          pubPc.onconnectionstatechange = () =>
+            appendLog(`Publish PC state: ${pubPc.connectionState}`);
+          pubPc.onicecandidate = (e) => {
+            if (e.candidate)
+              appendLog(`Pub local candidate: ${e.candidate.candidate}`);
+            else appendLog("Pub ICE gathering finished");
+          };
+
+          pubStream.getTracks().forEach((t) => pubPc.addTrack(t, pubStream));
+          const offer = await pubPc.createOffer();
+          await pubPc.setLocalDescription(offer);
+
+          const base = "https://webrtc.mzkki.my.id";
+          const name = pubStreamNameEl.value;
+          let whipUrl = buildUrl(base, name, "whip");
+          if (location.protocol === "https:" && whipUrl.startsWith("http://")) {
+            appendLog("Mixed-content: trying https for WHIP", true);
+            whipUrl = whipUrl.replace(/^http:/i, "https:");
+          }
+
+          appendLog(`Publishing to ${whipUrl}`);
+          const res = await fetch(whipUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/sdp" },
+            body: offer.sdp,
+          });
+          appendLog(`Publish HTTP ${res.status} ${res.statusText}`);
+          if (!res.ok) {
+            const txt = await res.text();
+            appendLog(`Publish failed: ${txt}`, true);
+            throw new Error("publish failed");
+          }
+          const answer = await res.text();
+          await pubPc.setRemoteDescription({ type: "answer", sdp: answer });
+          appendLog("Publishing started");
+          stopPub.disabled = false;
+        } catch (err) {
+          appendLog(String(err), true);
+          startPub.disabled = false;
+        }
+      });
+
+      stopPub.addEventListener("click", () => {
+        if (pubPc) {
+          try {
+            pubPc.close();
+          } catch (e) {}
+          pubPc = null;
+        }
+        if (pubStream) {
+          pubStream.getTracks().forEach((t) => t.stop());
+          pubStream = null;
+          localVid.srcObject = null;
+        }
+        appendLog("Publishing stopped");
+        startPub.disabled = false;
+        stopPub.disabled = true;
+      });
+
+      startSub.addEventListener("click", () => {
+        startSub.disabled = true;
+        const base = "https://webrtc.mzkki.my.id";
+        const name = subStreamNameEl.value;
+        let whepUrl = buildUrl(base, name, "whep");
+        if (location.protocol === "https:" && whepUrl.startsWith("http://")) {
+          appendLog("Mixed-content: trying https for WHEP", true);
+          whepUrl = whepUrl.replace(/^http:/i, "https:");
+        }
+
+        appendLog(`Subscribing to ${whepUrl}`);
+        if (reader) {
+          try {
+            reader.close();
+          } catch (e) {}
+          reader = null;
+        }
+        reader = new MediaMTXWebRTCReader({
+          url: whepUrl,
+          onError: (err) => {
+            appendLog(`Subscriber error: ${err}`, true);
+            startSub.disabled = false;
+          },
+          onTrack: (evt) => {
+            appendLog("Subscriber: received track");
+            remoteVid.srcObject = evt.streams[0];
+            stopSub.disabled = false;
+          },
+        });
+      });
+
+      stopSub.addEventListener("click", () => {
+        if (reader) {
+          try {
+            reader.close();
+          } catch (e) {}
+          reader = null;
+        }
+        remoteVid.srcObject = null;
+        appendLog("Subscribe stopped");
+        startSub.disabled = false;
+        stopSub.disabled = true;
+      });
+
+      window.addEventListener("beforeunload", () => {
+        if (pubPc) pubPc.close();
+        if (reader) reader.close();
+      });
+    </script>
+  </body>
+</html>
