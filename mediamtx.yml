@@ -5,6 +5,12 @@ webrtc: yes
 hls: yes
 
 paths:
+  haris:
+    record: no
+    source: publisher
+  wira:
+    record: no
+    source: publisher
   all:
     record: no
     source: publisher
