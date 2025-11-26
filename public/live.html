@@ -46,6 +46,30 @@
         pointer-events: none;
       }
 
+      .fps-counter {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: monospace;
+        color: #6ee7b7;
+      }
+
+      .timestamp {
+        position: absolute;
+        bottom: 8px;
+        left: 8px;
+        background: rgba(0, 0, 0, 0.6);
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-family: monospace;
+        color: #fff;
+      }
+
       .error {
         color: #ff6b6b;
         font-size: 14px;
@@ -59,6 +83,8 @@
   <body>
     <div class="container">
       <video id="video" playsinline autoplay muted></video>
+      <div id="fpsCounter" class="fps-counter">FPS: --</div>
+      <div id="timestamp" class="timestamp">--:--:--</div>
       <div id="error" class="error"></div>
       <div class="info">
         <!-- Optional helper text, can be removed -->
@@ -121,6 +147,57 @@
         } else {
           showError("HLS is not supported in this browser / WebView.");
         }
+
+        // FPS counter using requestVideoFrameCallback (modern browsers) or fallback
+        const fpsCounter = document.getElementById("fpsCounter");
+        let frameCount = 0;
+        let lastTime = performance.now();
+
+        function updateFPS() {
+          const now = performance.now();
+          const delta = now - lastTime;
+          if (delta >= 1000) {
+            const fps = Math.round((frameCount * 1000) / delta);
+            fpsCounter.textContent = `FPS: ${fps}`;
+            frameCount = 0;
+            lastTime = now;
+          }
+        }
+
+        if ("requestVideoFrameCallback" in HTMLVideoElement.prototype) {
+          // Modern browsers: accurate per-frame callback
+          function countFrame() {
+            frameCount++;
+            updateFPS();
+            video.requestVideoFrameCallback(countFrame);
+          }
+          video.requestVideoFrameCallback(countFrame);
+        } else {
+          // Fallback: use requestAnimationFrame (less accurate but works)
+          function countFrameFallback() {
+            if (video.readyState >= 2 && !video.paused) {
+              frameCount++;
+              updateFPS();
+            }
+            requestAnimationFrame(countFrameFallback);
+          }
+          requestAnimationFrame(countFrameFallback);
+        }
+
+        // Timestamp updater
+        const timestampEl = document.getElementById("timestamp");
+        function updateTimestamp() {
+          const now = new Date();
+          const dd = String(now.getDate()).padStart(2, "0");
+          const MM = String(now.getMonth() + 1).padStart(2, "0");
+          const yyyy = now.getFullYear();
+          const hh = String(now.getHours()).padStart(2, "0");
+          const mm = String(now.getMinutes()).padStart(2, "0");
+          const ss = String(now.getSeconds()).padStart(2, "0");
+          timestampEl.textContent = `${dd}/${MM}/${yyyy} ${hh}:${mm}:${ss}`;
+        }
+        updateTimestamp();
+        setInterval(updateTimestamp, 1000);
       });
     </script>
   </body>
