@@ -19,3 +19,6 @@ paths:
   cam1:
     source: rtsp://admin:Minergo%402024%21@id2.labkom.us:5188/axis-media/media.amp
     rtspTransport: tcp
+  cam2:
+    source: rtsp://admin:Minergo%402024%21@eu.labkom.us:7264/Streaming/Channels/101
+    rtspTransport: tcp
